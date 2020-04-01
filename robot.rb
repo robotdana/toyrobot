@@ -1,4 +1,6 @@
+# frozen_string_literal: true
 
+# everthing
 class RobotWorld
   Position = Struct.new(:x, :y) do
     def resolve(size)
@@ -7,46 +9,69 @@ class RobotWorld
     end
   end
 
+  # position, facing, movement
   class Robot
-    FACING_OPTIONS=%i{top right bottom left}
-    attr_reader :position, :facing
-    def initialize
-      @position = Position.new(0,0)
+    attr_reader :position, :facing, :grid_size
+    def initialize(size)
+      @position = Position.new(0, 0)
       @facing = :right
+      @grid_size = size
     end
 
     def draw
       case facing
-      when :top then '^'
+      when :up then '^'
       when :right then '>'
-      when :bottom then 'v'
+      when :down then 'v'
       when :left then '<'
       end
     end
 
     def face(direction)
-      @facing = case direction
-      when 'top', 'up','north','n' then :top
-      when 'right', 'east', 'e' then :right
-      when 'bottom', 'down', 'south', 's' then :bottom
-      when 'left', 'west', 'w' then :left
-      else raise "Direction not recognised: #{direction.inspect}"
-      end
+      @facing = parse_direction(direction)
     end
 
     def move(direction, distance = 1)
-      distance = 1 if distance.to_i == 0 && distance != 0
+      send(parse_direction(direction), parse_distance(distance))
+    end
+
+    def parse_direction(direction)
       case direction
-      when 'top', 'up','north','n', 'u'then position.y -= distance.to_i
-      when 'right', 'east', 'e', 'r' then position.x += distance.to_i
-      when 'bottom', 'down', 'south', 's', 'd' then position.y += distance.to_i
-      when 'left', 'west', 'w', 'l' then position.x -= distance.to_i
-      else raise "Direction not recognised: #{direction.inspect}"
+      when 'up', 'north', 'n', 'u' then :up
+      when 'right', 'east', 'e', 'r' then :right
+      when 'down', 'south', 's', 'd' then :down
+      when 'left', 'west', 'w', 'l' then :left
       end
     end
 
+    def parse_distance(distance = 1)
+      return 1 if distance.to_i.zero? && distance != 0
+
+      distance.to_i
+    end
+
+    def up(distance)
+      position.y -= distance
+      position.resolve(grid_size)
+    end
+
+    def right(distance)
+      position.x += distance
+      position.resolve(grid_size)
+    end
+
+    def down(distance)
+      position.y += distance
+      position.resolve(grid_size)
+    end
+
+    def left(distance)
+      position.x -= distance
+      position.resolve(grid_size)
+    end
+
     def forward(distance)
-      move(facing.to_s, distance)
+      send(facing, parse_distance(distance))
     end
   end
 
@@ -56,7 +81,7 @@ class RobotWorld
     @stdin = stdin
     @stdout = stdout
     @size = size
-    @robot = Robot.new
+    @robot = Robot.new(size)
   end
 
   def run
@@ -67,15 +92,24 @@ class RobotWorld
   end
 
   def draw
-    stdout.puts "# " * (size + 2)
+    draw_wall
     size.times do |y|
-      stdout.print "# "
+      draw_edge
       size.times do |x|
         draw_cell(Position.new(x, y))
       end
-      stdout.print "# \n"
+      draw_edge
+      stdout.puts ''
     end
-    stdout.puts "# " * (size + 2)
+    draw_wall
+  end
+
+  def draw_edge
+    stdout.print '# '
+  end
+
+  def draw_wall
+    stdout.puts '# ' * (size + 2)
   end
 
   def draw_cell(cell)
@@ -91,23 +125,23 @@ class RobotWorld
     parse(stdin.gets.chomp)
     stdout.puts "\e[1A\e[2K\e[1T\e[#{size + 2}A"
   rescue Interrupt
+    stdout.puts ''
     exit
   end
 
   DIRECTION = /(?:up|right|down|left|north|south|east|west|\b[nsewrlud]\b)/
+              .freeze # hi rubocop how you doing
+
   def parse(command)
     case command
-    when "exit", "quit"
-      exit
+    when 'exit', 'quit' then exit
     when /(?:face|turn) (#{DIRECTION})/
       robot.face(Regexp.last_match[1])
-    when /(?:move|go)(?: (\d+))?/
-      robot.forward(Regexp.last_match[1])
-      robot.position.resolve(size)
     when /(?:(?:move|go) )?(#{DIRECTION})(?: (\d+))?/
       robot.move(*Regexp.last_match.captures)
-      robot.position.resolve(size)
-    else raise "Command not recognised: #{command.inspect}"
+    when /(?:move|go)(?: (\d+))?/
+      robot.forward(Regexp.last_match[1])
+    else raise "Command not recognised: #{command}"
     end
   end
 end
